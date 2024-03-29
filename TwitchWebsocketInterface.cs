@@ -4,12 +4,14 @@ using UnityEngine;
 using NativeWebSocket;
 using System;
 using TwitchClassDefinitions;
+using System.Linq;
 
 public class TwitchWebsocketInterface
 {
     public WebSocket ws; //our lovely websocket that will have connection to eventsub for messages; do not send messages to here or twitch will get maj and close the connection.
     public Boolean readyToConnect;
     public string wsSession;
+    public string[] messageQueue;
 
     public void SetupWebsocketConnection()
     {
@@ -46,7 +48,15 @@ public class TwitchWebsocketInterface
         {
             ChannelChatMessageObject test = JsonUtility.FromJson<ChannelChatMessageObject>(message);
             Debug.Log("Received from api: " + test.payload.@event.message.text);
+            messageQueue.Append(test.payload.subscription.type);
         }
+        else if (message.Contains("channel.channel_points_custom_reward_redemption.add"))
+        {
+            ChannelPointCustomRewardRedemptionObject test = JsonUtility.FromJson<ChannelPointCustomRewardRedemptionObject>(message);
+            Debug.Log("Received from api: " + test.payload.@event.reward.title);
+            messageQueue.Append(test.payload.subscription.type);
+        }
+
         else { Debug.Log("Received message from WebSocket: " + message); }
         //more here for the events
     }

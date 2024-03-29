@@ -23,12 +23,13 @@ public class Twitch_connection : MonoBehaviour
     private AuthKeys keys = new AuthKeys();
     private string redirect_url = "http://localhost:2750/twitch-api/"; //This needs to be same as in dev.twitch application settings
     [SerializeField] private string[] scope;
+    [SerializeField] private string[] eventsToSub;
 
     void Start()
     {
         wsInterface = new TwitchWebsocketInterface();
         //Open browser with correct authorization url + parameters
-        Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientID}&redirect_uri={redirect_url}&scope={string.Join('+',scope)}&force_verify=true");
+        Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientID}&redirect_uri={redirect_url}&scope={string.Join("+",scope)}&force_verify=true");
         startRedirectListener(); //used to listen for redirect into the redirect url;
         StartCoroutine(AuthorizeApplicationCode());
     }
@@ -83,6 +84,10 @@ public class Twitch_connection : MonoBehaviour
             keys.authToken = response.access_token;
             Debug.Log("authToken received");
             StartCoroutine(SubscribeToInitialEvent());
+            foreach (string event_name in eventsToSub)
+            {
+                StartCoroutine(SubscribeToEvent(event_name.Split(",")[0], event_name.Split(",")[1]));
+            }
         }
         else
         {
@@ -111,6 +116,29 @@ public class Twitch_connection : MonoBehaviour
         request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
         request.SetRequestHeader("Content-Type", "application/json");
         yield return request.SendWebRequest();
-        Debug.Log("Subscription response: ");
+        if (request.error == null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
+        else { Debug.Log($"Subscription to event: channel.chat.message was successful"); }
+    }
+    IEnumerator SubscribeToEvent(string event_name, string version)
+    {
+        RequestObject requestChat = new RequestObject();
+        requestChat.condition = new ConditionObject();
+        requestChat.transport = new TransportObject();
+        requestChat.type = event_name;
+        requestChat.version = version;
+        requestChat.condition.broadcaster_user_id = targetChannel;
+        requestChat.transport.method = "websocket";
+        requestChat.transport.session_id = wsInterface.wsSession;
+
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(requestChat));
+        var request = new UnityWebRequest("https://api.twitch.tv/helix/eventsub/subscriptions", "POST");
+        request.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Client-ID", clientID);
+        request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
+        request.SetRequestHeader("Content-Type", "application/json");
+        yield return request.SendWebRequest();
+        if (request.error == null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
+        else { Debug.Log($"Subscription to event: {event_name} was successful"); }
     }
 }
