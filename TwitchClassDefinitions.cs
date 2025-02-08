@@ -3,11 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-//public class TwitchClassDefinitions : MonoBehaviour
-//{
-
-//}
-
 namespace TwitchClassDefinitions
 {
     [System.Serializable]
@@ -237,5 +232,6 @@ namespace TwitchClassDefinitions
         }
     }
 
+    //https://dev.twitch.tv/docs/authentication/scopes/
     /*EVENT NESTED STRUCTURES*/
 }
