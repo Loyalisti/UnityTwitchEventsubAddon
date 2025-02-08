@@ -152,7 +152,8 @@ namespace TwitchClassDefinitions
         public FragmentObject[] fragments;
     }
 
-    public class RewardObject
+    [System.Serializable]
+    public struct RewardObject
     {
         public string id;
         public string title;

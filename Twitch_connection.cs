@@ -21,6 +21,7 @@ public class Twitch_connection : MonoBehaviour
     private HttpListener listener; //redirect listener for authcode
     TwitchWebsocketInterface wsInterface; //main class used to read events
     private AuthKeys keys = new AuthKeys();
+    [SerializeField] private string testAuthCode;
     private string redirect_url = "http://localhost:2750/twitch-api/"; //This needs to be same as in dev.twitch application settings
     [SerializeField] private string[] scope;
     [SerializeField] private string[] eventsToSub;
@@ -29,8 +30,17 @@ public class Twitch_connection : MonoBehaviour
     {
         wsInterface = new TwitchWebsocketInterface();
         //Open browser with correct authorization url + parameters
-        Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientID}&redirect_uri={redirect_url}&scope={string.Join("+",scope)}&force_verify=true");
-        startRedirectListener(); //used to listen for redirect into the redirect url;
+        if (testAuthCode == "") {
+            Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientID}&redirect_uri={redirect_url}&scope={string.Join("+",scope)}&force_verify=true");
+            startRedirectListener(); //used to listen for redirect into the redirect url;
+        }
+        else { 
+            Debug.Log("authCode received");
+            keys.authCode = testAuthCode; 
+            wsInterface.readyToConnect = true;
+            wsInterface.SetupWebsocketConnection();
+        }
+
         StartCoroutine(AuthorizeApplicationCode());
     }
 
@@ -116,7 +126,7 @@ public class Twitch_connection : MonoBehaviour
         request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
         request.SetRequestHeader("Content-Type", "application/json");
         yield return request.SendWebRequest();
-        if (request.error == null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
+        if (request.error != null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
         else { Debug.Log($"Subscription to event: channel.chat.message was successful"); }
     }
     IEnumerator SubscribeToEvent(string event_name, string version)
@@ -138,7 +148,7 @@ public class Twitch_connection : MonoBehaviour
         request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
         request.SetRequestHeader("Content-Type", "application/json");
         yield return request.SendWebRequest();
-        if (request.error == null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
+        if (request.error != null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
         else { Debug.Log($"Subscription to event: {event_name} was successful"); }
     }
 }
