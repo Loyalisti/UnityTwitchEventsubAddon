@@ -21,6 +21,15 @@ namespace TwitchClassDefinitions
     }
 
     [System.Serializable]
+    public struct refreshtokenresponse 
+    {
+        public string access_token;
+        public string refresh_token;
+        public string[] scope;
+        public string token_type;
+    }
+
+    [System.Serializable]
     public struct RequestObject
     {
         public string type;
