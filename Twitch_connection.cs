@@ -5,6 +5,7 @@ using System.Net;
 using TwitchClassDefinitions;
 using System.IO;
 using UnityEngine.Rendering;
+using System;
 
 public class Twitch_connection : MonoBehaviour
 {
@@ -30,10 +31,18 @@ public class Twitch_connection : MonoBehaviour
     private string redirect_url = "http://localhost:2750/twitch-api/"; //This needs to be same as in dev.twitch application settings
     [SerializeField] private string[] scope;
     [SerializeField] private string[] eventsToSub;
+    [SerializeField] private Boolean DebugWebSocket;
 
     void Start()
     {
         wsInterface = new TwitchWebsocketInterface();
+        if (DebugWebSocket)
+        { 
+            wsInterface.readyToConnect = true;
+            wsInterface.SetupWebsocketConnection();
+            return; 
+        } //Skip authentication part
+
 
         if (File.Exists(Application.persistentDataPath+tokenPath))
         {

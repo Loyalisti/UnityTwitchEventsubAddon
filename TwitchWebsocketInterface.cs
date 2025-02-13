@@ -16,7 +16,8 @@ public class TwitchWebsocketInterface
     public void SetupWebsocketConnection()
     {
         //register callbacks and attempt connection
-        ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
+        //ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
+        ws = new WebSocket("ws://127.0.0.1:8488/ws");
         ws.OnMessage += OnMessage;
         ws.OnOpen += OnOpen;
         ws.OnError += OnError;
