@@ -6,31 +6,23 @@ using TwitchClassDefinitions;
 using System.IO;
 using UnityEngine.Rendering;
 using System;
+using Unity.VisualScripting;
+using UnityEditor;
 
 public class Twitch_connection : MonoBehaviour
 {
     // Start is called before the first frame update
 
-    public class AuthKeys
-    {
-        public string authCode; //Key we receive from website popup
-        public string authToken; //key we get from twitch for the session by using authCode
-        public string wsSessionID;
-    }
-
-    [SerializeField] public string clientID;//application ID from dev.twitch
-    [SerializeField] public string clientSecret;//application Secret from dev.twitch
-    [SerializeField] string targetChannel;
-    private HttpListener listener; //redirect listener for authcode
-    TwitchWebsocketInterface wsInterface; //main class used to read events
-    private AuthKeys keys = new AuthKeys();
-    //[SerializeField]
+    private string wsSessionID;
+    private string clientID;
+    private string clientSecret;
+    private string authToken;
     private string refreshToken;
-    [SerializeField] private string tokenPath;
-    //[SerializeField] private string testAuthCode;
-    private string redirect_url = "http://localhost:2750/twitch-api/"; //This needs to be same as in dev.twitch application settings
-    [SerializeField] private string[] scope;
-    [SerializeField] private string[] eventsToSub;
+
+    [SerializeField] string targetChannel;
+
+    TwitchWebsocketInterface wsInterface; //main class used to read events
+
     [SerializeField] private Boolean DebugWebSocket;
 
     void Start()
@@ -39,26 +31,25 @@ public class Twitch_connection : MonoBehaviour
         if (DebugWebSocket)
         { 
             wsInterface.readyToConnect = true;
-            wsInterface.SetupWebsocketConnection();
+            wsInterface.SetupWebsocketConnection(true);
             return; 
         } //Skip authentication part
 
-
-        if (File.Exists(Application.persistentDataPath+tokenPath))
+        if (File.Exists(Application.persistentDataPath+"extension-token"))
         {
-            refreshToken = File.ReadAllText(Application.persistentDataPath + tokenPath);
+            refreshToken = File.ReadAllText(Application.persistentDataPath + "extension-token");
             Debug.Log("Refresh token received");
+            
+            clientID = EditorPrefs.GetString("TUE_AppID", null);
+            clientSecret = EditorPrefs.GetString("TUE_AppSecret", null);
+
             StartCoroutine(RefreshAuthenticationToken());
             wsInterface.readyToConnect = true;
             wsInterface.SetupWebsocketConnection();
+            return;
         }
-        else
-        {
-            //Open browser with correct authorization url + parameters
-            Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={clientID}&redirect_uri={redirect_url}&scope={string.Join("+",scope)}&force_verify=true");
-            startRedirectListener(); //used to listen for redirect into the redirect url;
-            StartCoroutine(AuthorizeApplicationCode());
-        }
+
+        Debug.Log("Extension is not authenticated. Go to setting to reauthenticate");
     }
 
     void OnDestroy()
@@ -71,31 +62,8 @@ public class Twitch_connection : MonoBehaviour
         wsInterface.Update(); //just overwrite for dispatch message
     }
 
-    void startRedirectListener()
-    {
-        listener = new HttpListener();
-        listener.Prefixes.Add(redirect_url);
-        listener.Start();
-        listener.BeginGetContext(redirectListenerCallback, null);
-    }
-
     //this is kinda finicy. Sometimes if old authentication site is left open this will trigger and cause invalid token to be created.
     //Please make sure there arent such windows open.
-    void redirectListenerCallback(System.IAsyncResult result)
-    {
-        HttpListenerContext context = listener.EndGetContext(result);
-        HttpListenerRequest request = context.Request;
-        string url = request.Url.ToString();
-
-        if (url.Contains("code"))
-        { //Redirect found
-            Debug.Log("authCode received");
-            keys.authCode = url.Split('=')[1].Split('&')[0]; //this contains the authorization code that is used to get auth token later.
-            wsInterface.readyToConnect = true;
-            wsInterface.SetupWebsocketConnection();
-            listener.Stop();
-        }
-    } 
     IEnumerator RefreshAuthenticationToken()
     {
         while (!wsInterface.readyToConnect)
@@ -108,42 +76,15 @@ public class Twitch_connection : MonoBehaviour
         refreshtokenresponse response = JsonUtility.FromJson<refreshtokenresponse>(request.downloadHandler.text);
         if (response.access_token != null)
         {
-            keys.authToken = response.access_token;
+            authToken = response.access_token;
             refreshToken = response.refresh_token;
             SaveRefreshToken();
             Debug.Log($"New Refresh token is: {refreshToken}");
             Debug.Log("authToken received");
             StartCoroutine(SubscribeToInitialEvent());
-            foreach (string event_name in eventsToSub)
-            {
-                StartCoroutine(SubscribeToEvent(event_name.Split(",")[0], event_name.Split(",")[1]));
-            }
-        }
-        else
-        {
-            Debug.Log("Failed to receive authToken");
-        }
-        yield return null;
-    }
-
-    IEnumerator AuthorizeApplicationCode()
-    {
-        while (!wsInterface.readyToConnect)
-        {
-            yield return new WaitForSeconds(.5f);
-        }
-        var request = new UnityWebRequest($"https://id.twitch.tv/oauth2/token?client_id={clientID}&redirect_uri={redirect_url}&code={keys.authCode}&grant_type=authorization_code&client_secret={clientSecret}", "POST");
-        request.downloadHandler = new DownloadHandlerBuffer();
-        yield return request.SendWebRequest();
-        authcoderesponse response = JsonUtility.FromJson<authcoderesponse>(request.downloadHandler.text);
-        if (response.access_token != null)
-        {
-            keys.authToken = response.access_token;
-            refreshToken = response.refresh_token;
-            SaveRefreshToken();
-            Debug.Log("authToken received");
-            StartCoroutine(SubscribeToInitialEvent());
-            foreach (string event_name in eventsToSub)
+            string[] eventList = EditorPrefs.GetString("TUE_Events", null).Split('+'); //Events from the setting page
+            if (eventList[0] == "") { Debug.Log("No events defined in config"); yield break; }
+            foreach (string event_name in eventList)
             {
                 StartCoroutine(SubscribeToEvent(event_name.Split(",")[0], event_name.Split(",")[1]));
             }
@@ -172,7 +113,7 @@ public class Twitch_connection : MonoBehaviour
         request.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Client-ID", clientID);
-        request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
+        request.SetRequestHeader("Authorization", "Bearer " + authToken);
         request.SetRequestHeader("Content-Type", "application/json");
         yield return request.SendWebRequest();
         if (request.error != null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
@@ -194,7 +135,7 @@ public class Twitch_connection : MonoBehaviour
         request.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Client-ID", clientID);
-        request.SetRequestHeader("Authorization", "Bearer " + keys.authToken);
+        request.SetRequestHeader("Authorization", "Bearer " + authToken);
         request.SetRequestHeader("Content-Type", "application/json");
         yield return request.SendWebRequest();
         if (request.error != null) { Debug.Log("Subscription error response: " + request.error.ToString()); }
@@ -203,7 +144,7 @@ public class Twitch_connection : MonoBehaviour
     void SaveRefreshToken()
     {
         //TODO
-        File.WriteAllText(Application.persistentDataPath+tokenPath, refreshToken);
+        File.WriteAllText(Application.persistentDataPath+"extension-token", refreshToken);
         Debug.Log("Refresh token written to secure txt file");
     }
 }

@@ -9,6 +9,8 @@ using System.Numerics;
 using System.Threading.Tasks;
 using System.IO;
 using System;
+using System.Collections;
+using System.Security.Cryptography;
 
 public class TwitchUnityExtension : EditorWindow 
 {
@@ -113,9 +115,7 @@ public class TwitchUnityExtension : EditorWindow
         {
             //Open browser with correct authorization url + parameters
             Application.OpenURL($"https://id.twitch.tv/oauth2/authorize?response_type=code&client_id={appID}&redirect_uri=http://localhost:2750/twitch-api/&scope={string.Join("+",scopeList)}&force_verify=true");
-            startRedirectListener(); //used to listen for redirect into the redirect url;
-            //Task.Run(startRedirectListener);
-            AuthorizeApplicationCode();
+            AuthenticateApplication(); //will start seperate thread to get the token and authenticate. Refresh token will be stored in file.
         }
 
         if (GUILayout.Button("Save Settings"))
@@ -138,18 +138,29 @@ public class TwitchUnityExtension : EditorWindow
         }
     }
 
+    private void AuthenticateApplication()
+    {
+        startRedirectListener(); //used to listen for redirect into the redirect url;
+        AuthorizeApplicationCode();
+    }
+
     private void startRedirectListener()
     {
         listener = new HttpListener();
         listener.Prefixes.Add(redirect_url);
         listener.Start();
-        listener.BeginGetContext(redirectListenerCallback, null);
-        while (listener.IsListening) { }
+        Debug.Log("listener started");
+
+        //listener.TimeoutManager.EntityBody.Add(TimeSpan.FromSeconds(10));
+
+        while (listener.IsListening) {
+            IAsyncResult result = listener.BeginGetContext(redirectListenerCallback, null);
+            result.AsyncWaitHandle.WaitOne(1000);
+            Debug.Log("Listener is waiting");
+        }
     }
 
-    //this is kinda finicy. Sometimes if old authentication site is left open this will trigger and cause invalid token to be created.
-    //Please make sure there arent such windows open.
-    void redirectListenerCallback(System.IAsyncResult result)
+    private void redirectListenerCallback(System.IAsyncResult result)
     {
         HttpListenerContext context = listener.EndGetContext(result);
         HttpListenerRequest request = context.Request;
@@ -162,61 +173,36 @@ public class TwitchUnityExtension : EditorWindow
             listener.Stop();
         }
     } 
+
     private void AuthorizeApplicationCode()
     {
         Debug.Log("Entered Authorization");
-        var request = new UnityWebRequest($"https://id.twitch.tv/oauth2/token?client_id={appID}&redirect_uri={redirect_url}&code={authCode}&grant_type=authorization_code&client_secret={appSecret}", "POST");
-        request.downloadHandler = new DownloadHandlerBuffer();
-        request.SendWebRequest();
-        while (!request.isDone)
+        using (var request = new UnityWebRequest($"https://id.twitch.tv/oauth2/token?client_id={appID}&redirect_uri={redirect_url}&code={authCode}&grant_type=authorization_code&client_secret={appSecret}", "POST"))
         {
-
-        }
-        Debug.Log("Sent webrequest");
-
-        authcoderesponse response = JsonUtility.FromJson<authcoderesponse>(request.downloadHandler.text);
-        if (response.access_token != null)
-        {
-            authToken = response.access_token;
-            refreshToken = response.refresh_token;
-            Debug.Log($"Authentication Token {response.refresh_token}");
-            SaveRefreshToken();
-        }
-        else
-        {
-            Debug.Log("Failed to received Authentication Token");
-        }
-    }
-    /*
-    IEnumerator AuthorizeApplicationCode()
-    {
-        while (!wsInterface.readyToConnect)
-        {
-            yield return new WaitForSeconds(.5f);
-        }
-        var request = new UnityWebRequest($"https://id.twitch.tv/oauth2/token?client_id={clientID}&redirect_uri={redirect_url}&code={keys.authCode}&grant_type=authorization_code&client_secret={clientSecret}", "POST");
-        request.downloadHandler = new DownloadHandlerBuffer();
-        yield return request.SendWebRequest();
-        authcoderesponse response = JsonUtility.FromJson<authcoderesponse>(request.downloadHandler.text);
-        if (response.access_token != null)
-        {
-            keys.authToken = response.access_token;
-            refreshToken = response.refresh_token;
-            SaveRefreshToken();
-            Debug.Log("authToken received");
-            StartCoroutine(SubscribeToInitialEvent());
-            foreach (string event_name in eventsToSub)
+            request.timeout = 10;
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SendWebRequest();
+            Debug.Log("Request sent");
+            while (!request.isDone) { } //Hang here to wait for response
+            if (request.result == UnityWebRequest.Result.Success)
             {
-                StartCoroutine(SubscribeToEvent(event_name.Split(",")[0], event_name.Split(",")[1]));
+                authcoderesponse response = JsonUtility.FromJson<authcoderesponse>(request.downloadHandler.text);
+                Debug.Log("Response received");
+                if (response.access_token != null)
+                {
+                    authToken = response.access_token;
+                    refreshToken = response.refresh_token;
+                    Debug.Log($"Authentication Token {response.refresh_token}");
+                    SaveRefreshToken();
+                }
+            }
+            else
+            {
+                Debug.Log("error occured");
             }
         }
-        else
-        {
-            Debug.Log("Failed to receive authToken");
-        }
-        yield return null;
     }
-    */
+
     void SaveRefreshToken()
     {
         //TODO

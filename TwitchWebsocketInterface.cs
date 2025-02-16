@@ -13,11 +13,11 @@ public class TwitchWebsocketInterface
     public string wsSession;
     public string[] messageQueue = { };
 
-    public void SetupWebsocketConnection()
+    public void SetupWebsocketConnection(Boolean debug = false)
     {
         //register callbacks and attempt connection
-        //ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
-        ws = new WebSocket("ws://127.0.0.1:8488/ws");
+        if (debug) { ws = new WebSocket("ws://127.0.0.1:8488/ws"); } //Use local twitch-CLI tool to debug events
+        else { ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws"); }
         ws.OnMessage += OnMessage;
         ws.OnOpen += OnOpen;
         ws.OnError += OnError;
